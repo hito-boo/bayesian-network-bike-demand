@@ -1,0 +1,492 @@
+{
+  "identificacao_projeto": {
+    "titulo": "Predição de Demanda de Bicicletas Compartilhadas",
+    "tema": "Construção manual de uma rede bayesiana para estimar a demanda horária de bicicletas compartilhadas a partir de variáveis de clima e de calendário",
+    "dataset": "Seoul Bike Sharing Demand",
+    "fonte_dados": "UCI Machine Learning Repository (https://archive.ics.uci.edu/dataset/560/seoul+bike+sharing+demand)",
+    "problema_analisado": "Estimar a probabilidade de a demanda por bicicletas ser baixa, média ou alta em uma dada hora, dadas as condições de clima e calendário",
+    "modalidades_analise": [
+      "Análise Preditiva",
+      "Análise de Diagnóstico",
+      "Análise Descritiva"
+    ]
+  },
+  "metadados_execucao": {
+    "linguagem": "Python >= 3.10",
+    "bibliotecas": {
+      "pgmpy": ">= 0.1.23",
+      "networkx": ">= 3.0",
+      "matplotlib": ">= 3.7",
+      "numpy": ">= 1.24",
+      "pytest": ">= 7.0"
+    },
+    "algoritmo_inferencia": "VariableElimination (Eliminação de Variáveis Exata)"
+  },
+  "variaveis": [
+    {
+      "id": "estacao",
+      "nome": "Estação do Ano",
+      "descricao": "Estação climática anual em Seul, agrupando primavera e outono em meia-estação por apresentarem perfis térmicos equivalentes.",
+      "estados": ["Inverno", "Meia_Estacao", "Verao"],
+      "interpretacao_estados": {
+        "Inverno": "Meses de inverno rigoroso (dezembro a fevereiro)",
+        "Meia_Estacao": "Primavera e outono (março a maio e setembro a novembro)",
+        "Verao": "Meses quentes e úmidos de verão (junho a agosto)"
+      }
+    },
+    {
+      "id": "horario",
+      "nome": "Faixa Horária",
+      "descricao": "Período do dia segmentado conforme o fluxo de deslocamento urbano.",
+      "estados": ["Madrugada", "Comercial", "Pico"],
+      "interpretacao_estados": {
+        "Madrugada": "00h às 05h (baixa circulação urbana)",
+        "Comercial": "06h, 10h às 16h e 20h às 23h (horários fora de rush)",
+        "Pico": "07h às 09h e 17h às 19h (horários de rush pendular casa-trabalho)"
+      }
+    },
+    {
+      "id": "feriado",
+      "nome": "Indicador de Feriado",
+      "descricao": "Indica se a data corresponde a um feriado oficial no calendário sul-coreano.",
+      "estados": ["Nao", "Sim"],
+      "interpretacao_estados": {
+        "Nao": "Dia normal de calendário",
+        "Sim": "Feriado nacional ou local"
+      }
+    },
+    {
+      "id": "dia_ativo",
+      "nome": "Sistema em Operação",
+      "descricao": "Indica se o sistema público de locação de bicicletas esteve ativo e operante naquele horário.",
+      "estados": ["Nao", "Sim"],
+      "interpretacao_estados": {
+        "Nao": "Sistema inoperante ou fechado para manutenção",
+        "Sim": "Sistema aberto e operando normalmente"
+      }
+    },
+    {
+      "id": "radiacao_solar",
+      "nome": "Radiação Solar",
+      "descricao": "Intensidade de incidência solar medida em MJ/m2.",
+      "estados": ["Baixa", "Moderada", "Alta"],
+      "interpretacao_estados": {
+        "Baixa": "Até 0.05 MJ/m2 (noite, madrugada ou céu densamente encoberto)",
+        "Moderada": "Acima de 0.05 até 1.00 MJ/m2 (insolação parcial)",
+        "Alta": "Acima de 1.00 MJ/m2 (insolação intensa)"
+      }
+    },
+    {
+      "id": "umidade",
+      "nome": "Umidade Relativa do Ar",
+      "descricao": "Percentual de umidade relativa atmosférica.",
+      "estados": ["Baixa", "Moderada", "Alta"],
+      "interpretacao_estados": {
+        "Baixa": "Abaixo de 45% (ar seco)",
+        "Moderada": "De 45% a 75% (umidade intermediária)",
+        "Alta": "Acima de 75% (ar saturado, propício a neblina e precipitação)"
+      }
+    },
+    {
+      "id": "vento",
+      "nome": "Velocidade do Vento",
+      "descricao": "Intensidade do vento na superfície medida em m/s.",
+      "estados": ["Fraco", "Forte"],
+      "interpretacao_estados": {
+        "Fraco": "Abaixo de 2.0 m/s (brisa leve ou calmaria)",
+        "Forte": "2.0 m/s ou superior (vento perceptível que aumenta resistência e sensação térmica de frio)"
+      }
+    },
+    {
+      "id": "temperatura",
+      "nome": "Temperatura Ambiente",
+      "descricao": "Temperatura do ar em graus Celsius (°C).",
+      "estados": ["Baixa", "Amena", "Alta"],
+      "interpretacao_estados": {
+        "Baixa": "Abaixo de 5°C (frio intenso ou congelante)",
+        "Amena": "De 5°C a 22°C (conforto térmico ideal para pedalar)",
+        "Alta": "Acima de 22°C (clima quente)"
+      }
+    },
+    {
+      "id": "precipitacao",
+      "nome": "Ocorrência de Precipitação",
+      "descricao": "Estado de precipitação atmosférica combinando registros de chuva (mm) e neve (cm).",
+      "estados": ["Nenhuma", "Chuva", "Neve"],
+      "interpretacao_estados": {
+        "Nenhuma": "Tempo firme sem chuva ou neve (0 mm e 0 cm)",
+        "Chuva": "Precipitação líquida registrada (Rainfall > 0 mm)",
+        "Neve": "Precipitação de neve registrada (Snowfall > 0 cm)"
+      }
+    },
+    {
+      "id": "visibilidade",
+      "nome": "Visibilidade Atmosférica",
+      "descricao": "Alcance visual atmosférico medido em dezenas de metros (10m).",
+      "estados": ["Baixa", "Alta"],
+      "interpretacao_estados": {
+        "Baixa": "Abaixo de 1000 unidades (< 10 km, presença de neblina, chuva ou poluição/poeira)",
+        "Alta": "1000 unidades ou superior (>= 10 km, boa visibilidade)"
+      }
+    },
+    {
+      "id": "conforto_climatico",
+      "nome": "Conforto Climático para o Ciclista",
+      "descricao": "Variável intermediária que sintetiza a sensação de bem-estar e segurança física para uso de bicicleta ao ar livre.",
+      "estados": ["Desfavoravel", "Moderado", "Favoravel"],
+      "interpretacao_estados": {
+        "Desfavoravel": "Condição hostil (presença de chuva/neve ou frio intenso combinado com vento forte)",
+        "Moderado": "Condição aceitável, porém com vento forte ou frio moderado",
+        "Favoravel": "Condição ótima para ciclismo (tempo seco, vento fraco e temperatura amena ou quente)"
+      }
+    },
+    {
+      "id": "demanda",
+      "nome": "Demanda Horária por Bicicletas",
+      "descricao": "Volume total de bicicletas alugadas por hora na rede de Seul.",
+      "estados": ["Baixa", "Moderada", "Alta"],
+      "interpretacao_estados": {
+        "Baixa": "Até 250 bicicletas/hora",
+        "Moderada": "De 251 a 850 bicicletas/hora",
+        "Alta": "Acima de 850 bicicletas/hora"
+      }
+    }
+  ],
+  "estrutura": [
+    {
+      "variavel": "estacao",
+      "pais": [],
+      "justificativa": "Nó raiz astronômico/sazonal que governa o regime macroclimático ao longo do ano."
+    },
+    {
+      "variavel": "horario",
+      "pais": [],
+      "justificativa": "Nó raiz temporal que define o ciclo diurno/noturno e os horários de deslocamento pendular."
+    },
+    {
+      "variavel": "feriado",
+      "pais": [],
+      "justificativa": "Nó raiz determinado exclusivamente pelo calendário civil oficial."
+    },
+    {
+      "variavel": "dia_ativo",
+      "pais": [],
+      "justificativa": "Nó raiz administrativo referente à disponibilidade operacional do sistema de bicicletas."
+    },
+    {
+      "variavel": "radiacao_solar",
+      "pais": ["estacao", "horario"],
+      "justificativa": "A incidência de luz solar depende diretamente da inclinação sazonal (estação) e da elevação do sol ao longo do dia (horário)."
+    },
+    {
+      "variavel": "umidade",
+      "pais": ["estacao", "horario"],
+      "justificativa": "O regime de monções de verão em Seul e o resfriamento noturno determinam a umidade relativa do ar."
+    },
+    {
+      "variavel": "vento",
+      "pais": ["estacao", "horario"],
+      "justificativa": "O aquecimento convectivo diurno e as frentes sazonais alteram a velocidade média dos ventos."
+    },
+    {
+      "variavel": "temperatura",
+      "pais": ["estacao", "radiacao_solar"],
+      "justificativa": "A temperatura do ar resulta da combinação entre a massa de ar sazonal (estação) e o aquecimento direto por radiação solar."
+    },
+    {
+      "variavel": "precipitacao",
+      "pais": ["umidade", "temperatura"],
+      "justificativa": "A saturação de umidade gera precipitação, enquanto a temperatura define o estado físico (neve no frio ou chuva em temperaturas amenas/altas)."
+    },
+    {
+      "variavel": "visibilidade",
+      "pais": ["precipitacao", "umidade"],
+      "justificativa": "Tanto a queda de chuva/neve quanto a formação de neblina por alta umidade reduzem diretamente o alcance visual."
+    },
+    {
+      "variavel": "conforto_climatico",
+      "pais": ["temperatura", "precipitacao", "vento"],
+      "justificativa": "A percepção de conforto do ciclista é afetada pela temperatura, sensação térmica de vento e molhamento por chuva ou neve."
+    },
+    {
+      "variavel": "demanda",
+      "pais": ["conforto_climatico", "horario", "feriado", "dia_ativo"],
+      "justificativa": "A decisão de alugar uma bicicleta depende de o sistema estar operante, da necessidade de transporte conforme horário e feriado, e do conforto climático percebido."
+    }
+  ],
+  "probabilidades": {
+    "estacao": {
+      "pais": [],
+      "distribuicao": {
+        "Inverno": 0.2466,
+        "Meia_Estacao": 0.5014,
+        "Verao": 0.2520
+      }
+    },
+    "horario": {
+      "pais": [],
+      "distribuicao": {
+        "Madrugada": 0.2500,
+        "Comercial": 0.5000,
+        "Pico": 0.2500
+      }
+    },
+    "feriado": {
+      "pais": [],
+      "distribuicao": {
+        "Nao": 0.9507,
+        "Sim": 0.0493
+      }
+    },
+    "dia_ativo": {
+      "pais": [],
+      "distribuicao": {
+        "Nao": 0.0337,
+        "Sim": 0.9663
+      }
+    },
+    "radiacao_solar": {
+      "pais": ["estacao", "horario"],
+      "condicionais": {
+        "Inverno|Madrugada": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Inverno|Comercial": { "Baixa": 0.4295, "Moderada": 0.3306, "Alta": 0.2399 },
+        "Inverno|Pico": { "Baixa": 0.6399, "Moderada": 0.3573, "Alta": 0.0028 },
+        "Meia_Estacao|Madrugada": { "Baixa": 0.9990, "Moderada": 0.0005, "Alta": 0.0005 },
+        "Meia_Estacao|Comercial": { "Baixa": 0.4152, "Moderada": 0.1495, "Alta": 0.4353 },
+        "Meia_Estacao|Pico": { "Baixa": 0.2970, "Moderada": 0.5534, "Alta": 0.1496 },
+        "Verao|Madrugada": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Verao|Comercial": { "Baixa": 0.3758, "Moderada": 0.1498, "Alta": 0.4744 },
+        "Verao|Pico": { "Baixa": 0.0497, "Moderada": 0.6405, "Alta": 0.3098 }
+      }
+    },
+    "umidade": {
+      "pais": ["estacao", "horario"],
+      "condicionais": {
+        "Inverno|Madrugada": { "Baixa": 0.3130, "Moderada": 0.5033, "Alta": 0.1837 },
+        "Inverno|Comercial": { "Baixa": 0.5747, "Moderada": 0.3250, "Alta": 0.1003 },
+        "Inverno|Pico": { "Baixa": 0.4608, "Moderada": 0.3924, "Alta": 0.1468 },
+        "Meia_Estacao|Madrugada": { "Baixa": 0.0914, "Moderada": 0.5389, "Alta": 0.3697 },
+        "Meia_Estacao|Comercial": { "Baixa": 0.3980, "Moderada": 0.4216, "Alta": 0.1804 },
+        "Meia_Estacao|Pico": { "Baixa": 0.2851, "Moderada": 0.4689, "Alta": 0.2460 },
+        "Verao|Madrugada": { "Baixa": 0.0117, "Moderada": 0.4508, "Alta": 0.5375 },
+        "Verao|Comercial": { "Baixa": 0.2121, "Moderada": 0.5613, "Alta": 0.2266 },
+        "Verao|Pico": { "Baixa": 0.1545, "Moderada": 0.6043, "Alta": 0.2412 }
+      }
+    },
+    "vento": {
+      "pais": ["estacao", "horario"],
+      "condicionais": {
+        "Inverno|Madrugada": { "Fraco": 0.7495, "Forte": 0.2505 },
+        "Inverno|Comercial": { "Fraco": 0.5194, "Forte": 0.4806 },
+        "Inverno|Pico": { "Fraco": 0.5924, "Forte": 0.4076 },
+        "Meia_Estacao|Madrugada": { "Fraco": 0.8803, "Forte": 0.1197 },
+        "Meia_Estacao|Comercial": { "Fraco": 0.6256, "Forte": 0.3744 },
+        "Meia_Estacao|Pico": { "Fraco": 0.6647, "Forte": 0.3353 },
+        "Verao|Madrugada": { "Fraco": 0.9087, "Forte": 0.0913 },
+        "Verao|Comercial": { "Fraco": 0.6367, "Forte": 0.3633 },
+        "Verao|Pico": { "Fraco": 0.6483, "Forte": 0.3517 }
+      }
+    },
+    "temperatura": {
+      "pais": ["estacao", "radiacao_solar"],
+      "condicionais": {
+        "Inverno|Baixa": { "Baixa": 0.9600, "Amena": 0.0396, "Alta": 0.0004 },
+        "Inverno|Moderada": { "Baixa": 0.8404, "Amena": 0.1587, "Alta": 0.0009 },
+        "Inverno|Alta": { "Baixa": 0.8776, "Amena": 0.1205, "Alta": 0.0019 },
+        "Meia_Estacao|Baixa": { "Baixa": 0.1756, "Amena": 0.7840, "Alta": 0.0404 },
+        "Meia_Estacao|Moderada": { "Baixa": 0.0965, "Amena": 0.7846, "Alta": 0.1189 },
+        "Meia_Estacao|Alta": { "Baixa": 0.0263, "Amena": 0.7075, "Alta": 0.2662 },
+        "Verao|Baixa": { "Baixa": 0.0005, "Amena": 0.2928, "Alta": 0.7067 },
+        "Verao|Moderada": { "Baixa": 0.0010, "Amena": 0.1854, "Alta": 0.8136 },
+        "Verao|Alta": { "Baixa": 0.0008, "Amena": 0.0380, "Alta": 0.9612 }
+      }
+    },
+    "precipitacao": {
+      "pais": ["umidade", "temperatura"],
+      "condicionais": {
+        "Baixa|Baixa": { "Nenhuma": 0.8798, "Chuva": 0.0004, "Neve": 0.1198 },
+        "Baixa|Amena": { "Nenhuma": 0.9968, "Chuva": 0.0027, "Neve": 0.0005 },
+        "Baixa|Alta": { "Nenhuma": 0.9982, "Chuva": 0.0009, "Neve": 0.0009 },
+        "Moderada|Baixa": { "Nenhuma": 0.8687, "Chuva": 0.0026, "Neve": 0.1287 },
+        "Moderada|Amena": { "Nenhuma": 0.9832, "Chuva": 0.0097, "Neve": 0.0071 },
+        "Moderada|Alta": { "Nenhuma": 0.9851, "Chuva": 0.0145, "Neve": 0.0004 },
+        "Alta|Baixa": { "Nenhuma": 0.5259, "Chuva": 0.0662, "Neve": 0.4079 },
+        "Alta|Amena": { "Nenhuma": 0.7099, "Chuva": 0.2887, "Neve": 0.0014 },
+        "Alta|Alta": { "Nenhuma": 0.7771, "Chuva": 0.2219, "Neve": 0.0010 }
+      }
+    },
+    "visibilidade": {
+      "pais": ["precipitacao", "umidade"],
+      "condicionais": {
+        "Nenhuma|Baixa": { "Baixa": 0.0603, "Alta": 0.9397 },
+        "Nenhuma|Moderada": { "Baixa": 0.2344, "Alta": 0.7656 },
+        "Nenhuma|Alta": { "Baixa": 0.5614, "Alta": 0.4386 },
+        "Chuva|Baixa": { "Baixa": 0.3500, "Alta": 0.6500 },
+        "Chuva|Moderada": { "Baixa": 0.4500, "Alta": 0.5500 },
+        "Chuva|Alta": { "Baixa": 0.7024, "Alta": 0.2976 },
+        "Neve|Baixa": { "Baixa": 0.2500, "Alta": 0.7500 },
+        "Neve|Moderada": { "Baixa": 0.3152, "Alta": 0.6848 },
+        "Neve|Alta": { "Baixa": 0.8918, "Alta": 0.1082 }
+      }
+    },
+    "conforto_climatico": {
+      "pais": ["temperatura", "precipitacao", "vento"],
+      "condicionais": {
+        "Baixa|Nenhuma|Fraco": { "Desfavoravel": 0.1500, "Moderado": 0.8000, "Favoravel": 0.0500 },
+        "Baixa|Nenhuma|Forte": { "Desfavoravel": 0.9000, "Moderado": 0.0900, "Favoravel": 0.0100 },
+        "Baixa|Chuva|Fraco": { "Desfavoravel": 0.9500, "Moderado": 0.0400, "Favoravel": 0.0100 },
+        "Baixa|Chuva|Forte": { "Desfavoravel": 0.9800, "Moderado": 0.0150, "Favoravel": 0.0050 },
+        "Baixa|Neve|Fraco": { "Desfavoravel": 0.9600, "Moderado": 0.0300, "Favoravel": 0.0100 },
+        "Baixa|Neve|Forte": { "Desfavoravel": 0.9900, "Moderado": 0.0080, "Favoravel": 0.0020 },
+        "Amena|Nenhuma|Fraco": { "Desfavoravel": 0.0200, "Moderado": 0.1000, "Favoravel": 0.8800 },
+        "Amena|Nenhuma|Forte": { "Desfavoravel": 0.1000, "Moderado": 0.8000, "Favoravel": 0.1000 },
+        "Amena|Chuva|Fraco": { "Desfavoravel": 0.9200, "Moderado": 0.0700, "Favoravel": 0.0100 },
+        "Amena|Chuva|Forte": { "Desfavoravel": 0.9700, "Moderado": 0.0250, "Favoravel": 0.0050 },
+        "Amena|Neve|Fraco": { "Desfavoravel": 0.9500, "Moderado": 0.0400, "Favoravel": 0.0100 },
+        "Amena|Neve|Forte": { "Desfavoravel": 0.9800, "Moderado": 0.0150, "Favoravel": 0.0050 },
+        "Alta|Nenhuma|Fraco": { "Desfavoravel": 0.0300, "Moderado": 0.1500, "Favoravel": 0.8200 },
+        "Alta|Nenhuma|Forte": { "Desfavoravel": 0.0800, "Moderado": 0.8200, "Favoravel": 0.1000 },
+        "Alta|Chuva|Fraco": { "Desfavoravel": 0.9000, "Moderado": 0.0800, "Favoravel": 0.0200 },
+        "Alta|Chuva|Forte": { "Desfavoravel": 0.9600, "Moderado": 0.0300, "Favoravel": 0.0100 },
+        "Alta|Neve|Fraco": { "Desfavoravel": 0.9500, "Moderado": 0.0400, "Favoravel": 0.0100 },
+        "Alta|Neve|Forte": { "Desfavoravel": 0.9800, "Moderado": 0.0150, "Favoravel": 0.0050 }
+      }
+    },
+    "demanda": {
+      "pais": ["conforto_climatico", "horario", "feriado", "dia_ativo"],
+      "condicionais": {
+        "Desfavoravel|Madrugada|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Desfavoravel|Madrugada|Nao|Sim": { "Baixa": 0.9142, "Moderada": 0.0844, "Alta": 0.0014 },
+        "Desfavoravel|Madrugada|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Desfavoravel|Madrugada|Sim|Sim": { "Baixa": 0.9710, "Moderada": 0.0145, "Alta": 0.0145 },
+        "Desfavoravel|Comercial|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Desfavoravel|Comercial|Nao|Sim": { "Baixa": 0.6745, "Moderada": 0.3159, "Alta": 0.0096 },
+        "Desfavoravel|Comercial|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Desfavoravel|Comercial|Sim|Sim": { "Baixa": 0.7279, "Moderada": 0.2653, "Alta": 0.0068 },
+        "Desfavoravel|Pico|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Desfavoravel|Pico|Nao|Sim": { "Baixa": 0.5082, "Moderada": 0.4500, "Alta": 0.0418 },
+        "Desfavoravel|Pico|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Desfavoravel|Pico|Sim|Sim": { "Baixa": 0.7722, "Moderada": 0.1645, "Alta": 0.0633 },
+        "Moderado|Madrugada|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Moderado|Madrugada|Nao|Sim": { "Baixa": 0.7863, "Moderada": 0.1897, "Alta": 0.0240 },
+        "Moderado|Madrugada|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Moderado|Madrugada|Sim|Sim": { "Baixa": 0.9394, "Moderada": 0.0303, "Alta": 0.0303 },
+        "Moderado|Comercial|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Moderado|Comercial|Nao|Sim": { "Baixa": 0.1517, "Moderada": 0.4085, "Alta": 0.4398 },
+        "Moderado|Comercial|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Moderado|Comercial|Sim|Sim": { "Baixa": 0.4599, "Moderada": 0.1532, "Alta": 0.3869 },
+        "Moderado|Pico|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Moderado|Pico|Nao|Sim": { "Baixa": 0.1033, "Moderada": 0.3296, "Alta": 0.5671 },
+        "Moderado|Pico|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Moderado|Pico|Sim|Sim": { "Baixa": 0.5211, "Moderada": 0.1268, "Alta": 0.3521 },
+        "Favoravel|Madrugada|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Favoravel|Madrugada|Nao|Sim": { "Baixa": 0.3475, "Moderada": 0.5578, "Alta": 0.0947 },
+        "Favoravel|Madrugada|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Favoravel|Madrugada|Sim|Sim": { "Baixa": 0.3514, "Moderada": 0.5135, "Alta": 0.1351 },
+        "Favoravel|Comercial|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Favoravel|Comercial|Nao|Sim": { "Baixa": 0.0452, "Moderada": 0.3717, "Alta": 0.5831 },
+        "Favoravel|Comercial|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Favoravel|Comercial|Sim|Sim": { "Baixa": 0.0526, "Moderada": 0.3083, "Alta": 0.6391 },
+        "Favoravel|Pico|Nao|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Favoravel|Pico|Nao|Sim": { "Baixa": 0.0275, "Moderada": 0.2685, "Alta": 0.7040 },
+        "Favoravel|Pico|Sim|Nao": { "Baixa": 0.9980, "Moderada": 0.0010, "Alta": 0.0010 },
+        "Favoravel|Pico|Sim|Sim": { "Baixa": 0.0159, "Moderada": 0.5873, "Alta": 0.3968 }
+      }
+    }
+  },
+  "cenarios": [
+    {
+      "id": "cenario_1_preditivo_clima_ideal",
+      "titulo": "Previsão de Demanda no Horário de Pico sob Condições Climáticas Ideais",
+      "modalidade": "Análise Preditiva",
+      "pergunta": "Qual a distribuição de probabilidade da demanda por bicicletas em um horário de pico de dia útil operante quando a temperatura é amena, não há precipitação e o vento é fraco?",
+      "evidencias": {
+        "temperatura": "Amena",
+        "precipitacao": "Nenhuma",
+        "vento": "Fraco",
+        "horario": "Pico",
+        "feriado": "Nao",
+        "dia_ativo": "Sim"
+      },
+      "variaveis_consultadas": ["conforto_climatico", "demanda"],
+      "resultados_esperados": {
+        "conforto_climatico": {
+          "Desfavoravel": 0.0200,
+          "Moderado": 0.1000,
+          "Favoravel": 0.8800
+        },
+        "demanda": {
+          "Baixa": 0.0447,
+          "Moderada": 0.2782,
+          "Alta": 0.6771
+        }
+      },
+      "interpretacao": "Em condições climáticas ideais no horário de pico de um dia útil, o conforto climático é majoritariamente Favorável (88.0%), impulsionando a probabilidade de Demanda Alta para 67.71% e mantendo a probabilidade de Demanda Baixa em apenas 4.47%.",
+      "justificativa_relevancia": "Auxilia gestores operacionais no pré-posicionamento e balanceamento de frotas nas estações antes dos horários de rush matinal e vespertino."
+    },
+    {
+      "id": "cenario_2_diagnostico_queda_demanda",
+      "titulo": "Diagnóstico de Causas Climáticas para Queda Brusca de Demanda no Horário de Pico",
+      "modalidade": "Análise de Diagnóstico",
+      "pergunta": "Sabendo que o sistema estava ativo em pleno horário de pico de um dia útil, mas registrou Demanda Baixa, qual a probabilidade de o conforto climático estar desfavorável e de estar ocorrendo precipitação?",
+      "evidencias": {
+        "demanda": "Baixa",
+        "horario": "Pico",
+        "feriado": "Nao",
+        "dia_ativo": "Sim"
+      },
+      "variaveis_consultadas": ["conforto_climatico", "precipitacao"],
+      "resultados_esperados": {
+        "conforto_climatico": {
+          "estado_mais_provavel": "Desfavoravel",
+          "probabilidade_minima_esperada": 0.6500
+        }
+      },
+      "interpretacao": "A observação de Demanda Baixa em pleno horário de rush inverte o fluxo de inferência (raciocínio diagnóstico de efeito para causa), elevando drasticamente a crença de que o conforto climático está Desfavorável e aumentando a probabilidade posterior de ocorrência de chuva ou neve em relação à probabilidade a priori.",
+      "justificativa_relevancia": "Permite auditar anomalias operacionais e distinguir quedas de uso provocadas por intempéries meteorológicas de falhas técnicas no sistema."
+    },
+    {
+      "id": "cenario_3_efeito_feriado_pico",
+      "titulo": "Impacto do Calendário de Feriados sobre o Perfil de Demanda no Horário de Pico",
+      "modalidade": "Análise Descritiva / Preditiva",
+      "pergunta": "Como a ocorrência de um feriado altera a distribuição de demanda durante a faixa de horário de pico quando o conforto climático é plenamente favorável?",
+      "evidencias": {
+        "conforto_climatico": "Favoravel",
+        "horario": "Pico",
+        "feriado": "Sim",
+        "dia_ativo": "Sim"
+      },
+      "variaveis_consultadas": ["demanda"],
+      "resultados_esperados": {
+        "demanda": {
+          "Baixa": 0.0159,
+          "Moderada": 0.5873,
+          "Alta": 0.3968
+        }
+      },
+      "interpretacao": "Mesmo com conforto climático Favorável, a presença de um feriado reduz a probabilidade de Demanda Alta na faixa de pico de 70.40% (em dias normais) para 39.68%, deslocando a massa de probabilidade para Demanda Moderada (58.73%) devido à ausência do deslocamento pendular obrigatório casa-trabalho.",
+      "justificativa_relevancia": "Orienta o dimensionamento de equipes de manutenção e reposição de bicicletas em feriados, evitando superdimensionamento nos horários tradicionais de rush."
+    },
+    {
+      "id": "cenario_4_propagacao_visibilidade_inverno",
+      "titulo": "Propagação de Evidência Indireta de Baixa Visibilidade no Inverno",
+      "modalidade": "Análise Preditiva e Diagnóstica Mista",
+      "pergunta": "Em um horário de pico no inverno (dia útil ativo), sensores reportam Visibilidade Baixa. Como essa evidência indireta atualiza a probabilidade de estar nevando e impacta a demanda esperada?",
+      "evidencias": {
+        "estacao": "Inverno",
+        "horario": "Pico",
+        "visibilidade": "Baixa",
+        "feriado": "Nao",
+        "dia_ativo": "Sim"
+      },
+      "variaveis_consultadas": ["precipitacao", "conforto_climatico", "demanda"],
+      "resultados_esperados": {
+        "demanda": {
+          "estado_mais_provavel": "Baixa"
+        }
+      },
+      "interpretacao": "A evidência em 'visibilidade' (nó folha meteorológico) propaga-se contra a direção causal para seus pais ('precipitacao' e 'umidade'), elevando significativamente a probabilidade posterior de 'Neve' no inverno; em seguida, essa crença desce para 'conforto_climatico' e resulta no predomínio de 'Demanda Baixa'.",
+      "justificativa_relevancia": "Demonstra o funcionamento da d-separação e da propagação multidirecional de crenças em Redes Bayesianas quando variáveis intermediárias (precipitação e conforto) não são diretamente observadas."
+    }
+  ]
+}
