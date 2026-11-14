@@ -20,7 +20,15 @@
       "numpy": ">= 1.24",
       "pytest": ">= 7.0"
     },
-    "algoritmo_inferencia": "VariableElimination (Eliminação de Variáveis Exata)"
+    "algoritmo_inferencia": "VariableElimination (Eliminação de Variáveis Exata)",
+    "versoes_validadas": {
+      "python": "3.12.10",
+      "pgmpy": "1.1.2",
+      "networkx": "3.7",
+      "matplotlib": "3.11.2",
+      "numpy": "2.5.4",
+      "pytest": "9.2.0"
+    }
   },
   "variaveis": [
     {
@@ -408,21 +416,30 @@
         "feriado": "Nao",
         "dia_ativo": "Sim"
       },
+      "evidencias_base": {
+        "horario": "Pico",
+        "feriado": "Nao",
+        "dia_ativo": "Sim"
+      },
       "variaveis_consultadas": ["conforto_climatico", "demanda"],
       "resultados_esperados": {
         "conforto_climatico": {
           "Desfavoravel": 0.0200,
           "Moderado": 0.1000,
-          "Favoravel": 0.8800
+          "Favoravel": 0.8800,
+          "aumenta_em_relacao_base": ["Favoravel"]
         },
         "demanda": {
           "Baixa": 0.0447,
           "Moderada": 0.2782,
-          "Alta": 0.6771
+          "Alta": 0.6771,
+          "aumenta_em_relacao_base": ["Alta"],
+          "diminui_em_relacao_base": ["Baixa"]
         }
       },
-      "interpretacao": "Em condições climáticas ideais no horário de pico de um dia útil, o conforto climático é majoritariamente Favorável (88.0%), impulsionando a probabilidade de Demanda Alta para 67.71% e mantendo a probabilidade de Demanda Baixa em apenas 4.47%.",
-      "justificativa_relevancia": "Auxilia gestores operacionais no pré-posicionamento e balanceamento de frotas nas estações antes dos horários de rush matinal e vespertino."
+      "fundamentacao_resultados_esperados": "Pais de conforto_climatico todos observados: a posterior é a linha 'Amena|Nenhuma|Fraco' da CPT. Demanda por marginalização sobre o conforto; Alta = 0.02*0.0418 + 0.10*0.5671 + 0.88*0.7040 = 0.6771.",
+      "interpretacao": "Com clima ideal no pico, o conforto é Favorável em 88%. Em relação ao pico sem informação de clima, Demanda Alta sobe de 50.06% para 67.71% e Baixa cai de 16.67% para 4.47%.",
+      "justificativa_relevancia": "Apoia o pré-posicionamento da frota antes dos horários de pico."
     },
     {
       "id": "cenario_2_diagnostico_queda_demanda",
@@ -435,15 +452,27 @@
         "feriado": "Nao",
         "dia_ativo": "Sim"
       },
+      "evidencias_base": {
+        "horario": "Pico",
+        "feriado": "Nao",
+        "dia_ativo": "Sim"
+      },
       "variaveis_consultadas": ["conforto_climatico", "precipitacao"],
       "resultados_esperados": {
         "conforto_climatico": {
           "estado_mais_provavel": "Desfavoravel",
-          "probabilidade_minima_esperada": 0.6500
+          "probabilidade_minima_esperada": 0.6500,
+          "aumenta_em_relacao_base": ["Desfavoravel"],
+          "diminui_em_relacao_base": ["Favoravel"]
+        },
+        "precipitacao": {
+          "aumenta_em_relacao_base": ["Chuva", "Neve"],
+          "diminui_em_relacao_base": ["Nenhuma"]
         }
       },
-      "interpretacao": "A observação de Demanda Baixa em pleno horário de rush inverte o fluxo de inferência (raciocínio diagnóstico de efeito para causa), elevando drasticamente a crença de que o conforto climático está Desfavorável e aumentando a probabilidade posterior de ocorrência de chuva ou neve em relação à probabilidade a priori.",
-      "justificativa_relevancia": "Permite auditar anomalias operacionais e distinguir quedas de uso provocadas por intempéries meteorológicas de falhas técnicas no sistema."
+      "fundamentacao_resultados_esperados": "Bayes: P(c | Baixa) ∝ P(Baixa | c, Pico, Nao, Sim) * P(c). A verossimilhança de Desfavoravel (0.5082) é 4.9 vezes a de Moderado e 18.5 vezes a de Favoravel, o que deve torná-lo majoritário. Chuva e neve levam a conforto Desfavoravel com P >= 0.90, logo a crença em precipitação também deve subir.",
+      "interpretacao": "Raciocínio diagnóstico (efeito para causa): conforto Desfavorável sobe de 23.27% para 70.95% e precipitação (chuva ou neve) de 10.39% para 30.42%. Limitação: 'Nenhuma' segue a precipitação mais provável (69.58%), pois frio com vento forte também explica a demanda baixa.",
+      "justificativa_relevancia": "Ajuda a distinguir quedas de uso causadas pelo clima de falhas operacionais."
     },
     {
       "id": "cenario_3_efeito_feriado_pico",
@@ -456,16 +485,25 @@
         "feriado": "Sim",
         "dia_ativo": "Sim"
       },
+      "evidencias_base": {
+        "conforto_climatico": "Favoravel",
+        "horario": "Pico",
+        "feriado": "Nao",
+        "dia_ativo": "Sim"
+      },
       "variaveis_consultadas": ["demanda"],
       "resultados_esperados": {
         "demanda": {
           "Baixa": 0.0159,
           "Moderada": 0.5873,
-          "Alta": 0.3968
+          "Alta": 0.3968,
+          "aumenta_em_relacao_base": ["Moderada"],
+          "diminui_em_relacao_base": ["Alta"]
         }
       },
-      "interpretacao": "Mesmo com conforto climático Favorável, a presença de um feriado reduz a probabilidade de Demanda Alta na faixa de pico de 70.40% (em dias normais) para 39.68%, deslocando a massa de probabilidade para Demanda Moderada (58.73%) devido à ausência do deslocamento pendular obrigatório casa-trabalho.",
-      "justificativa_relevancia": "Orienta o dimensionamento de equipes de manutenção e reposição de bicicletas em feriados, evitando superdimensionamento nos horários tradicionais de rush."
+      "fundamentacao_resultados_esperados": "Pais de demanda todos observados: a posterior é a linha 'Favoravel|Pico|Sim|Sim' da CPT; a base é a linha 'Favoravel|Pico|Nao|Sim' (Alta = 0.7040).",
+      "interpretacao": "Mesmo com clima favorável, o feriado reduz Demanda Alta no pico de 70.40% para 39.68% e torna Moderada a mais provável (58.73%), pela ausência do deslocamento casa-trabalho.",
+      "justificativa_relevancia": "Orienta o dimensionamento de equipes e da reposição de bicicletas em feriados."
     },
     {
       "id": "cenario_4_propagacao_visibilidade_inverno",
@@ -479,14 +517,36 @@
         "feriado": "Nao",
         "dia_ativo": "Sim"
       },
+      "evidencias_base": {
+        "estacao": "Inverno",
+        "horario": "Pico",
+        "feriado": "Nao",
+        "dia_ativo": "Sim"
+      },
       "variaveis_consultadas": ["precipitacao", "conforto_climatico", "demanda"],
       "resultados_esperados": {
+        "precipitacao": {
+          "aumenta_em_relacao_base": ["Chuva", "Neve"],
+          "diminui_em_relacao_base": ["Nenhuma"]
+        },
+        "conforto_climatico": {
+          "estado_mais_provavel": "Desfavoravel",
+          "aumenta_em_relacao_base": ["Desfavoravel"]
+        },
+        "demanda": {
+          "estado_mais_provavel": "Moderada",
+          "aumenta_em_relacao_base": ["Baixa"],
+          "diminui_em_relacao_base": ["Alta"]
+        }
+      },
+      "expectativa_nao_confirmada": {
         "demanda": {
           "estado_mais_provavel": "Baixa"
         }
       },
-      "interpretacao": "A evidência em 'visibilidade' (nó folha meteorológico) propaga-se contra a direção causal para seus pais ('precipitacao' e 'umidade'), elevando significativamente a probabilidade posterior de 'Neve' no inverno; em seguida, essa crença desce para 'conforto_climatico' e resulta no predomínio de 'Demanda Baixa'.",
-      "justificativa_relevancia": "Demonstra o funcionamento da d-separação e da propagação multidirecional de crenças em Redes Bayesianas quando variáveis intermediárias (precipitação e conforto) não são diretamente observadas."
+      "fundamentacao_resultados_esperados": "Na CPT de visibilidade, P(Baixa | Neve ou Chuva, u) > P(Baixa | Nenhuma, u) para toda umidade u, logo a crença em precipitação, conforto Desfavoravel e Demanda Baixa deve subir. A expectativa intuitiva (Demanda Baixa mais provável) não se confirma: mesmo com conforto Desfavoravel a CPT de demanda no pico dá Baixa = 0.5082 contra Moderada = 0.4500, e a mistura com conforto Moderado mantém Moderada à frente.",
+      "interpretacao": "A evidência sobe contra as arestas até a precipitação: Neve vai de 15.21% para 32.37%. Conforto Desfavorável sobe de 50.95% para 61.77% e Demanda Baixa de 30.42% para 34.91%, mas Moderada segue a mais provável (40.05%). Limitação: a evidência indireta, a três arestas da demanda, é muito atenuada e não basta para prever demanda baixa.",
+      "justificativa_relevancia": "Mostra a propagação de crença de um sensor para sua causa e uma limitação do modelo: a evidência indireta move as crenças na direção certa, mas não muda o estado mais provável da demanda."
     }
   ]
 }
